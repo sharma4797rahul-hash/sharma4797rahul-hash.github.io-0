@@ -1,0 +1,971 @@
+<!DOCTYPE html>
+<html lang="en">
+  <!-- Three.js for 3D Hologram & MediaPipe for Hand Tracking -->
+<script src="https://cdn.jsdelivr.net/npm/three@0.124.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.min.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>JARVIS | Stark Interface</title>
+
+<style>
+*{box-sizing:border-box}
+body{
+ margin:0;background:#020812;color:#00eaff;
+ font-family:Arial,sans-serif;overflow:hidden;
+}
+#video{
+ position:fixed;inset:0;width:100%;height:100%;
+ object-fit:contain;transform:scaleX(-1);opacity:.3;
+}
+#stage{position:fixed;inset:0;z-index:1}
+#stage canvas{display:block}
+#handCanvas{
+ position:fixed;inset:0;width:100%;height:100%;
+ z-index:3;pointer-events:none;
+}
+.hud{position:fixed;inset:0;z-index:4;pointer-events:none}
+.corner{position:absolute;width:55px;height:55px;border-color:#00eaff}
+.tl{top:12px;left:12px;border-top:2px solid;border-left:2px solid}
+.tr{top:12px;right:12px;border-top:2px solid;border-right:2px solid}
+.bl{bottom:12px;left:12px;border-bottom:2px solid;border-left:2px solid}
+.br{bottom:12px;right:12px;border-bottom:2px solid;border-right:2px solid}
+.brand{
+ position:absolute;top:18px;left:50%;transform:translateX(-50%);
+ text-align:center;letter-spacing:6px;font-size:17px;
+ text-shadow:0 0 15px cyan;
+}
+.brand small{display:block;font-size:8px;letter-spacing:3px;margin-top:6px}
+#status{
+ position:absolute;top:75px;right:20px;text-align:right;
+ font-size:10px;line-height:2;background:#001a2acc;
+ padding:10px;border-right:2px solid cyan;
+}
+#menu{
+ position:fixed;z-index:8;left:20px;top:85px;
+ width:220px;max-height:75vh;overflow:auto;
+ padding:15px;background:rgba(0,18,38,.92);
+ border:1px solid #00eaff;border-radius:8px;
+ box-shadow:0 0 25px #00eaff33;
+ backdrop-filter:blur(12px);transition:.3s;
+}
+#menu.closed{transform:translateX(-130%);opacity:0;pointer-events:none}
+.menuhead{display:flex;justify-content:space-between;align-items:center}
+.menuhead h2{font-size:15px;letter-spacing:3px}
+.section{font-size:9px;letter-spacing:3px;color:#72cce8;margin:17px 0 8px}
+button{
+ width:100%;padding:11px;margin:4px 0;
+ background:#04243b;color:#b8faff;border:1px solid #00cfff;
+ border-radius:5px;cursor:pointer;transition:.2s;
+}
+button:active{transform:scale(.96)}
+button:hover{background:#00688a;box-shadow:0 0 12px cyan}
+#close{width:32px;color:#ff728c;border-color:#ff728c}
+#reopen{
+ display:none;position:fixed;top:85px;left:15px;
+ z-index:9;width:auto;background:#001c34;
+}
+#reopen.visible{display:block}
+#file{display:none}
+#bottom{
+ position:fixed;bottom:18px;left:50%;transform:translateX(-50%);
+ z-index:4;font-size:9px;letter-spacing:2px;
+ white-space:nowrap;background:#001b2dcc;padding:10px;
+ border:1px solid #00eaff66;pointer-events:none;
+}
+#start{
+ position:fixed;inset:0;z-index:20;background:#010711;
+ display:flex;align-items:center;justify-content:center;
+}
+.startbox{
+ width:88%;max-width:360px;padding:28px;text-align:center;
+ background:#061a30;border:1px solid cyan;
+ box-shadow:0 0 35px #00eaff33;border-radius:10px;
+}
+.startbox h1{letter-spacing:6px;text-shadow:0 0 15px cyan}
+.startbox p{font-size:12px;line-height:1.7;color:#9bd7e9}
+#startButton{background:#00bde8;color:#00101a;font-weight:bold}
+#error{font-size:11px;color:#ff8799;margin-top:12px}
+@media(max-width:600px){
+ #menu{left:10px;top:70px;width:175px;padding:10px}
+ .brand{font-size:12px}
+ #status{right:10px;top:65px;font-size:8px}
+ #bottom{font-size:7px;bottom:10px}
+}
+</style>
+</head>
+
+<body>
+<!-- Hidden webcam feed for hand tracking -->
+<video id="holo-webcam" playsinline style="display:none;"></video>
+
+<!-- Floating 3D hologram overlay -->
+<div id="holo-overlay" style="position:fixed; inset:0; pointer-events:none; z-index:999;"></div>
+
+<!-- JARVIS control bar (bottom-right corner) -->
+<div id="jarvis-ui" style="position:fixed; bottom:20px; right:20px; z-index:1000; display:flex; gap:10px; align-items:center; font-family:sans-serif;">
+  <span id="jarvis-status" style="background:rgba(0,20,35,0.85); color:#00f0ff; border:1px solid #00f0ff; padding:8px 12px; border-radius:20px; font-size:13px;">
+    JARVIS: Standby
+  </span>
+  <button id="jarvis-btn" style="background:#00f0ff; color:#001423; border:none; padding:10px 16px; border-radius:20px; font-weight:bold; cursor:pointer; box-shadow:0 0 15px rgba(0,240,255,0.6);">
+    Activate JARVIS &amp; Hands
+  </button>
+</div>
+
+<video id="video" autoplay muted playsinline></video>
+<div id="stage"></div>
+<canvas id="handCanvas"></canvas>
+
+<div class="hud">
+ <div class="corner tl"></div><div class="corner tr"></div>
+ <div class="corner bl"></div><div class="corner br"></div>
+ <div class="brand">J.A.R.V.I.S.<small>STARK INDUSTRIES • HOLOGRAPHIC SYSTEM</small></div>
+ <div id="status">
+  SYSTEM: STANDBY<br>
+  LEFT HAND: OFFLINE<br>
+  RIGHT HAND: OFFLINE<br>
+  OBJECTS: 0
+ </div>
+</div>
+
+<div id="menu">
+ <div class="menuhead">
+  <h2>CONTROL HUB</h2>
+  <button id="close">✕</button>
+ </div>
+
+ <div class="section">HOLOGRAM CREATION</div>
+ <button onclick="addShape('cube')">＋ CUBE</button>
+ <button onclick="addShape('sphere')">＋ SPHERE</button>
+ <button onclick="addShape('torus')">＋ ENERGY RING</button>
+ <button onclick="addShape('octahedron')">＋ CRYSTAL</button>
+
+ <div class="section">IMAGE HOLOGRAM</div>
+ <button onclick="document.getElementById('file').click()">UPLOAD IMAGE</button>
+ <input id="file" type="file" accept="image/*">
+
+ <div class="section">OBJECT CONTROL</div>
+ <button onclick="duplicateSelected()">DUPLICATE</button>
+ <button onclick="deleteSelected()">DELETE SELECTED</button>
+ <button onclick="clearAll()">CLEAR ALL</button>
+ <button onclick="deselect()">DESELECT</button>
+
+ <div class="section">SYSTEM</div>
+ <button id="trackingButton">START HAND TRACKING</button>
+ <div id="info" style="font-size:10px;line-height:1.8;margin-top:10px">
+ SELECTED: NONE
+ </div>
+</div>
+
+<button id="reopen">☰ MENU</button>
+<div id="bottom">PINCH TO GRAB • TWO HANDS TO SCALE • TWO FINGERS TO ROTATE</div>
+
+<div id="start">
+ <div class="startbox">
+  <h1>J.A.R.V.I.S.</h1>
+  <p>
+   Initialize your holographic workspace.
+   Camera access is required for two-hand gesture tracking.
+  </p>
+  <button id="startButton">INITIALIZE SYSTEM</button>
+  <div id="error"></div>
+ </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+
+<script type="module">
+import * as THREE from
+'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+
+/* SCENE */
+
+const scene=new THREE.Scene();
+const camera=new THREE.PerspectiveCamera(
+ 50,innerWidth/innerHeight,.1,100
+);
+camera.position.z=10;
+
+const renderer=new THREE.WebGLRenderer({
+ alpha:true,antialias:true
+});
+renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));
+renderer.setSize(innerWidth,innerHeight);
+document.getElementById('stage').appendChild(renderer.domElement);
+
+scene.add(new THREE.AmbientLight(0xffffff,1.5));
+
+const grid=new THREE.GridHelper(30,40,0x00aaff,0x06405c);
+grid.position.y=-3;
+grid.material.transparent=true;
+grid.material.opacity=.3;
+scene.add(grid);
+
+const objects=[];
+let selected=null;
+let handVisible=true;
+let tracking=false;
+let handsModel=null;
+let stream=null;
+
+const video=document.getElementById('video');
+const canvas=document.getElementById('handCanvas');
+const ctx=canvas.getContext('2d');
+const status=document.getElementById('status');
+const info=document.getElementById('info');
+
+const connections=[
+ [0,1],[1,2],[2,3],[3,4],
+ [0,5],[5,6],[6,7],[7,8],
+ [5,9],[9,10],[10,11],[11,12],
+ [9,13],[13,14],[14,15],[15,16],
+ [13,17],[17,18],[18,19],[19,20],
+ [0,17]
+];
+
+const handStates={};
+let scaleStart=null;
+let rotationStart=null;
+
+/* HOLOGRAM CREATION */
+
+function makeMaterial(color){
+ return new THREE.MeshBasicMaterial({
+  color,wireframe:true,transparent:true,
+  opacity:.85
+ });
+}
+
+function addShape(type){
+ if(objects.length>=60)return;
+
+ let geometry;
+ if(type==='cube')geometry=new THREE.BoxGeometry(1.5,1.5,1.5);
+ if(type==='sphere')geometry=new THREE.IcosahedronGeometry(1,2);
+ if(type==='torus')geometry=new THREE.TorusGeometry(.9,.23,12,60);
+ if(type==='octahedron')geometry=new THREE.OctahedronGeometry(1.1,1);
+
+ const color=0x00eaff;
+ const group=new THREE.Group();
+ const mesh=new THREE.Mesh(geometry,makeMaterial(color));
+ group.add(mesh);
+
+ const halo=new THREE.Mesh(
+  new THREE.SphereGeometry(1.25,16,16),
+  new THREE.MeshBasicMaterial({
+   color,wireframe:true,transparent:true,opacity:.10
+  })
+ );
+ group.add(halo);
+
+ group.userData={type,mesh,halo,image:false};
+ group.position.set((Math.random()-.5)*3,(Math.random()-.5)*2,0);
+ scene.add(group);
+ objects.push(group);
+ select(group);
+}
+
+function select(object){
+ if(selected&&selected.userData.mesh){
+  selected.userData.mesh.material.color.set(0x00eaff);
+ }
+ selected=object;
+ if(selected&&selected.userData.mesh){
+  selected.userData.mesh.material.color.set(0xffffff);
+ }
+ updateInfo();
+}
+
+function updateInfo(){
+ info.textContent='SELECTED: '+(selected?selected.userData.type.toUpperCase():'NONE')+
+ ' | OBJECTS: '+objects.length;
+ status.innerHTML=
+ 'SYSTEM: '+(tracking?'ACTIVE':'STANDBY')+
+ '<br>LEFT HAND: '+(handStates.left?'ONLINE':'OFFLINE')+
+ '<br>RIGHT HAND: '+(handStates.right?'ONLINE':'OFFLINE')+
+ '<br>OBJECTS: '+objects.length;
+}
+
+function disposeObject(obj){
+ obj.traverse(child=>{
+  if(child.geometry)child.geometry.dispose();
+  if(child.material){
+   const mats=Array.isArray(child.material)?child.material:[child.material];
+   mats.forEach(m=>{
+    if(m.map)m.map.dispose();
+    m.dispose();
+   });
+  }
+ });
+}
+
+function deleteSelected(){
+ if(!selected)return;
+ scene.remove(selected);
+ disposeObject(selected);
+ objects.splice(objects.indexOf(selected),1);
+ selected=null;
+ updateInfo();
+}
+
+function clearAll(){
+ objects.forEach(obj=>{
+  scene.remove(obj);
+  disposeObject(obj);
+ });
+ objects.length=0;
+ selected=null;
+ updateInfo();
+}
+
+function deselect(){select(null)}
+
+function duplicateSelected(){
+ if(!selected)return;
+ const copy=selected.clone(true);
+ copy.position.x+=.8;
+ copy.position.y-=.5;
+ scene.add(copy);
+ objects.push(copy);
+ select(copy);
+}
+
+/* IMAGE HOLOGRAM */
+
+document.getElementById('file').addEventListener('change',event=>{
+ const file=event.target.files[0];
+ if(!file)return;
+ if(!file.type.startsWith('image/'))return;
+
+ const reader=new FileReader();
+ reader.onload=()=>{
+  const image=new Image();
+  image.onload=()=>{
+   const texture=new THREE.Texture(image);
+   texture.colorSpace=THREE.SRGBColorSpace;
+   texture.needsUpdate=true;
+
+   const ratio=image.width/image.height;
+   const width=Math.min(3,2*ratio);
+   const height=width/ratio;
+
+   const group=new THREE.Group();
+   const geometry=new THREE.PlaneGeometry(width,height);
+
+   const picture=new THREE.Mesh(
+    geometry,
+    new THREE.MeshBasicMaterial({
+     map:texture,transparent:true,side:THREE.DoubleSide
+    })
+   );
+   group.add(picture);
+
+   const border=new THREE.LineSegments(
+    new THREE.EdgesGeometry(geometry),
+    new THREE.LineBasicMaterial({color:0x00eaff})
+   );
+   border.position.z=.02;
+   group.add(border);
+
+   group.userData={type:'image hologram',image:true};
+   scene.add(group);
+   objects.push(group);
+   select(group);
+  };
+  image.src=reader.result;
+ };
+ reader.readAsDataURL(file);
+ event.target.value='';
+});
+
+/* COORDINATES */
+
+function worldPosition(x,y){
+ const point=new THREE.Vector3((1-x)*2-1,-(y*2-1),.5);
+ point.unproject(camera);
+ const direction=point.sub(camera.position).normalize();
+ const distance=-camera.position.z/direction.z;
+ return camera.position.clone().add(direction.multiplyScalar(distance));
+}
+
+function distance(a,b){
+ return Math.hypot(a.x-b.x,a.y-b.y);
+}
+
+function nearestObject(x,y){
+ const point=worldPosition(x,y);
+ let nearest=null,best=Infinity;
+ for(const obj of objects){
+  const d=Math.hypot(obj.position.x-point.x,obj.position.y-point.y);
+  if(d<best){best=d;nearest=obj;}
+ }
+ return best<2.1?nearest:null;
+}
+
+/* HAND DRAWING */
+
+function drawHands(results){
+ ctx.clearRect(0,0,canvas.width,canvas.height);
+
+ if(!handVisible)return;
+ const all=results.multiHandLandmarks||[];
+
+ all.forEach((lm,index)=>{
+  const color=index===0?'#00eaff':'#ffb347';
+  ctx.strokeStyle=color;
+  ctx.fillStyle='#ffffff';
+  ctx.lineWidth=3;
+
+  connections.forEach(([a,b])=>{
+   ctx.beginPath();
+   ctx.moveTo(lm[a].x*canvas.width,lm[a].y*canvas.height);
+   ctx.lineTo(lm[b].x*canvas.width,lm[b].y*canvas.height);
+   ctx.stroke();
+  });
+
+  lm.forEach((p,i)=>{
+   ctx.beginPath();
+   ctx.arc(p.x*canvas.width,p.y*canvas.height,i===8||i===4?7:4,0,Math.PI*2);
+   ctx.fillStyle=i===8||i===4?'#ffffff':color;
+   ctx.fill();
+  });
+ });
+}
+
+/* GESTURE STATE */
+
+function onResults(results){
+ const all=results.multiHandLandmarks||[];
+ const labels=results.multiHandedness||[];
+
+ drawHands(results);
+
+ const detected={left:null,right:null};
+
+ all.forEach((lm,i)=>{
+  const label=labels[i]?.label?.toLowerCase();
+  const key=label==='left'?'left':'right';
+  detected[key]=lm;
+ });
+
+ handStates.left=detected.left;
+ handStates.right=detected.right;
+
+ const entries=[
+  ['left',detected.left],
+  ['right',detected.right]
+ ];
+
+ entries.forEach(([key,lm])=>{
+  if(!lm){
+   if(handStates[key+'Grab'])handStates[key+'Grab']=null;
+   return;
+  }
+
+  const pinching=distance(lm[4],lm[8])<.065;
+  const p=lm[8];
+
+  if(pinching&&!handStates[key+'Pinch']){
+   const hit=nearestObject(p.x,p.y);
+   if(hit){
+    select(hit);
+    handStates[key+'Grab']=hit;
+   }
+  }
+
+  if(pinching&&handStates[key+'Grab']){
+   const world=worldPosition(p.x,p.y);
+   handStates[key+'Grab'].position.x=world.x;
+   handStates[key+'Grab'].position.y=world.y;
+  }
+
+  if(!pinching){
+   handStates[key+'Grab']=null;
+  }
+
+  handStates[key+'Pinch']=pinching;
+ });
+
+ /* TWO-HAND SCALE */
+
+ if(detected.left&&detected.right&&selected){
+  const a=detected.left[9];
+  const b=detected.right[9];
+  const d=distance(a,b);
+
+  if(scaleStart===null){
+   scaleStart=d;
+   handStates.initialScale=selected.scale.x;
+  }
+
+  const scale=THREE.MathUtils.clamp(
+   handStates.initialScale*d/Math.max(scaleStart,.01),
+   .25,4
+  );
+  selected.scale.setScalar(scale);
+
+  /* TWO-HAND ROTATION */
+
+  const angle=Math.atan2(
+   detected.right[8].y-detected.left[8].y,
+   detected.right[8].x-detected.left[8].x
+  );
+
+  if(rotationStart!==null){
+   let delta=angle-rotationStart;
+   if(delta>Math.PI)delta-=2*Math.PI;
+   if(delta< -Math.PI)delta+=2*Math.PI;
+   selected.rotation.z+=delta;
+  }
+  rotationStart=angle;
+ }else{
+  scaleStart=null;
+  rotationStart=null;
+ }
+
+ updateInfo();
+}
+
+/* CAMERA */
+
+async function startTracking(){
+ const error=document.getElementById('error');
+ try{
+  document.getElementById('startButton').textContent='STARTING...';
+
+  stream=await navigator.mediaDevices.getUserMedia({
+   audio:false,
+   video:{
+    facingMode:'user',
+    width:{ideal:640},
+    height:{ideal:480},
+    frameRate:{ideal:30}
+   }
+  });
+
+  video.srcObject=stream;
+  await video.play();
+
+  handsModel=new window.Hands({
+   locateFile:file=>'https://cdn.jsdelivr.net/npm/@mediapipe/hands/'+file
+  });
+
+  handsModel.setOptions({
+   maxNumHands:2,
+   modelComplexity:0,
+   minDetectionConfidence:.65,
+   minTrackingConfidence:.65
+  });
+
+  handsModel.onResults(onResults);
+
+  tracking=true;
+  document.getElementById('start').style.display='none';
+  updateInfo();
+
+  let busy=false;
+
+  async function detect(){
+   if(!tracking)return;
+   if(video.readyState>=2&&!busy){
+    busy=true;
+    try{
+     await handsModel.send({image:video});
+    }catch(e){
+     console.warn(e);
+    }
+    busy=false;
+   }
+   requestAnimationFrame(detect);
+  }
+  detect();
+
+ }catch(e){
+  error.textContent='Camera error: '+e.message;
+  document.getElementById('startButton').textContent='TRY AGAIN';
+ }
+}
+
+document.getElementById('startButton').onclick=startTracking;
+document.getElementById('trackingButton').onclick=startTracking;
+
+/* MENU */
+
+const menu=document.getElementById('menu');
+const reopen=document.getElementById('reopen');
+
+document.getElementById('close').onclick=()=>{
+ menu.classList.add('closed');
+ reopen.classList.add('visible');
+};
+
+reopen.onclick=()=>{
+ menu.classList.remove('closed');
+ reopen.classList.remove('visible');
+};
+
+/* RENDER LOOP */
+
+function animate(){
+ requestAnimationFrame(animate);
+ const time=performance.now()*.001;
+
+ objects.forEach((obj,i)=>{
+  if(obj!==selected&&!obj.userData.image){
+   obj.rotation.y+=.002;
+   obj.rotation.x+=.001;
+  }
+  if(obj.userData.halo){
+   obj.userData.halo.rotation.y-=.002;
+   obj.userData.halo.material.opacity=.07+Math.sin(time*2+i)*.035;
+  }
+ });
+
+ renderer.render(scene,camera);
+}
+animate();
+
+function resize(){
+ camera.aspect=innerWidth/innerHeight;
+ camera.updateProjectionMatrix();
+ renderer.setSize(innerWidth,innerHeight);
+ canvas.width=innerWidth;
+ canvas.height=innerHeight;
+}
+window.addEventListener('resize',resize);
+resize();
+
+</script>
+<script>
+(function () {
+  const videoEl = document.getElementById("holo-webcam");
+  const overlayEl = document.getElementById("holo-overlay");
+  const statusEl = document.getElementById("jarvis-status");
+  const btnEl = document.getElementById("jarvis-btn");
+
+  // 1. Setup Three.js Hologram Scene
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
+  camera.position.z = 4;
+
+  const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setPixelRatio(window.devicePixelRatio);
+  overlayEl.appendChild(renderer.domElement);
+
+  const holoGroup = new THREE.Group();
+  const coreMesh = new THREE.Mesh(
+    new THREE.IcosahedronGeometry(0.9, 1),
+    new THREE.MeshBasicMaterial({ color: 0x00f0ff, wireframe: true, transparent: true, opacity: 0.85 })
+  );
+  const ringMesh = new THREE.Mesh(
+    new THREE.TorusGeometry(1.35, 0.03, 12, 64),
+    new THREE.MeshBasicMaterial({ color: 0x38bdf8, wireframe: true, transparent: true, opacity: 0.7 })
+  );
+  holoGroup.add(coreMesh, ringMesh);
+  scene.add(holoGroup);
+
+  let targetScale = 1;
+  let autoSpin = true;
+
+  function animate() {
+    requestAnimationFrame(animate);
+    if (autoSpin) {
+      holoGroup.rotation.y += 0.01;
+      ringMesh.rotation.x += 0.015;
+    }
+    holoGroup.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), 0.15);
+    renderer.render(scene, camera);
+  }
+  animate();
+
+  window.addEventListener("resize", () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+
+  // 2. Setup MediaPipe Hand Tracking
+  let handsStarted = false;
+  function startHandTracking() {
+    if (handsStarted || typeof Hands === "undefined") return;
+    handsStarted = true;
+
+    const hands = new Hands({
+      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/${file}`
+    });
+    hands.setOptions({
+      maxNumHands: 1,
+      modelComplexity: 1,
+      minDetectionConfidence: 0.65,
+      minTrackingConfidence: 0.65
+    });
+
+    hands.onResults((results) => {
+      if (!results.multiHandLandmarks || results.multiHandLandmarks.length === 0) return;
+      const lm = results.multiHandLandmarks[0];
+      const thumbTip = lm[4];
+      const indexTip = lm[8];
+
+      // Move & tilt hologram with index finger (mirrored X)
+      holoGroup.position.x = (0.5 - indexTip.x) * 4.5;
+      holoGroup.position.y = (0.5 - indexTip.y) * 3.0;
+      holoGroup.rotation.x = (indexTip.y - 0.5) * 2.5;
+      holoGroup.rotation.y = (0.5 - indexTip.x) * 2.5;
+
+      // Pinch distance controls hologram size
+      const pinchDist = Math.hypot(thumbTip.x - indexTip.x, thumbTip.y - indexTip.y);
+      targetScale = Math.min(2.2, Math.max(0.4, pinchDist * 8));
+    });
+
+    const cam = new Camera(videoEl, {
+      onFrame: async () => { await hands.send({ image: videoEl }); },
+      width: 640,
+      height: 480
+    });
+    cam.start();
+  }
+
+  // 3. Setup JARVIS Voice Assistant (Web Speech API)
+  function speak(text) {
+    if (!("speechSynthesis" in window)) return;
+    window.speechSynthesis.cancel();
+    const utter = new SpeechSynthesisUtterance(text);
+    utter.rate = 1.0;
+    utter.pitch = 0.95;
+    window.speechSynthesis.speak(utter);
+  }
+
+  function startJarvisVoice() {
+    const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRec) {
+      statusEl.textContent = "JARVIS: Voice unsupported in this browser";
+      return;
+    }
+
+    const recognition = new SpeechRec();
+    recognition.lang = "en-US";
+    recognition.continuous = true;
+    recognition.interimResults = false;
+
+    recognition.onresult = (event) => {
+      const transcript = event.results[event.results.length - 1][0].transcript.toLowerCase().trim();
+      statusEl.textContent = `Heard: "${transcript}"`;
+
+      if (transcript.includes("jarvis")) {
+        if (transcript.includes("hello") || transcript.includes("status")) {
+          speak("All systems online. Holographic interface ready.");
+        } else if (transcript.includes("bigger") || transcript.includes("zoom in")) {
+          targetScale = Math.min(2.2, targetScale + 0.4);
+          speak("Increasing hologram scale.");
+        } else if (transcript.includes("smaller") || transcript.includes("zoom out")) {
+          targetScale = Math.max(0.4, targetScale - 0.4);
+          speak("Reducing hologram scale.");
+        } else if (transcript.includes("stop")) {
+          autoSpin = false;
+          speak("Rotation paused.");
+        } else if (transcript.includes("spin")) {
+          autoSpin = true;
+          speak("Resuming rotation.");
+        } else if (transcript.includes("hide")) {
+          overlayEl.style.display = "none";
+          speak("Hologram hidden.");
+        } else if (transcript.includes("show")) {
+          overlayEl.style.display = "block";
+          speak("Hologram restored.");
+        } else if (transcript.includes("reset")) {
+          holoGroup.position.set(0, 0, 0);
+          targetScale = 1;
+          autoSpin = true;
+          speak("Interface reset.");
+        } else {
+          speak("Yes, I am listening.");
+        }
+      }
+    };
+
+    recognition.onend = () => {
+      try { recognition.start(); } catch (e) {}
+    };
+
+    recognition.start();
+    statusEl.textContent = "JARVIS: Listening...";
+    speak("JARVIS online. Hand tracking and voice systems active.");
+  }
+
+  // 4. Single Click to Start Everything (required by browser security)
+  btnEl.addEventListener("click", () => {
+    btnEl.style.display = "none";
+    startHandTracking();
+    startJarvisVoice();
+  });
+})();
+</script>
+<script>
+(function () {
+  const videoEl = document.getElementById("holo-webcam");
+  const overlayEl = document.getElementById("holo-overlay");
+  const statusEl = document.getElementById("jarvis-status");
+  const btnEl = document.getElementById("jarvis-btn");
+
+  // 1. Setup Three.js Hologram Scene
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
+  camera.position.z = 4;
+
+  const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setPixelRatio(window.devicePixelRatio);
+  overlayEl.appendChild(renderer.domElement);
+
+  const holoGroup = new THREE.Group();
+  const coreMesh = new THREE.Mesh(
+    new THREE.IcosahedronGeometry(0.9, 1),
+    new THREE.MeshBasicMaterial({ color: 0x00f0ff, wireframe: true, transparent: true, opacity: 0.85 })
+  );
+  const ringMesh = new THREE.Mesh(
+    new THREE.TorusGeometry(1.35, 0.03, 12, 64),
+    new THREE.MeshBasicMaterial({ color: 0x38bdf8, wireframe: true, transparent: true, opacity: 0.7 })
+  );
+  holoGroup.add(coreMesh, ringMesh);
+  scene.add(holoGroup);
+
+  let targetScale = 1;
+  let autoSpin = true;
+
+  function animate() {
+    requestAnimationFrame(animate);
+    if (autoSpin) {
+      holoGroup.rotation.y += 0.01;
+      ringMesh.rotation.x += 0.015;
+    }
+    holoGroup.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), 0.15);
+    renderer.render(scene, camera);
+  }
+  animate();
+
+  window.addEventListener("resize", () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+
+  // 2. Setup MediaPipe Hand Tracking
+  let handsStarted = false;
+  function startHandTracking() {
+    if (handsStarted || typeof Hands === "undefined") return;
+    handsStarted = true;
+
+    const hands = new Hands({
+      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/${file}`
+    });
+    hands.setOptions({
+      maxNumHands: 1,
+      modelComplexity: 1,
+      minDetectionConfidence: 0.65,
+      minTrackingConfidence: 0.65
+    });
+
+    hands.onResults((results) => {
+      if (!results.multiHandLandmarks || results.multiHandLandmarks.length === 0) return;
+      const lm = results.multiHandLandmarks[0];
+      const thumbTip = lm[4];
+      const indexTip = lm[8];
+
+      // Move & tilt hologram with index finger (mirrored X)
+      holoGroup.position.x = (0.5 - indexTip.x) * 4.5;
+      holoGroup.position.y = (0.5 - indexTip.y) * 3.0;
+      holoGroup.rotation.x = (indexTip.y - 0.5) * 2.5;
+      holoGroup.rotation.y = (0.5 - indexTip.x) * 2.5;
+
+      // Pinch distance controls hologram size
+      const pinchDist = Math.hypot(thumbTip.x - indexTip.x, thumbTip.y - indexTip.y);
+      targetScale = Math.min(2.2, Math.max(0.4, pinchDist * 8));
+    });
+
+    const cam = new Camera(videoEl, {
+      onFrame: async () => { await hands.send({ image: videoEl }); },
+      width: 640,
+      height: 480
+    });
+    cam.start();
+  }
+
+  // 3. Setup JARVIS Voice Assistant (Web Speech API)
+  function speak(text) {
+    if (!("speechSynthesis" in window)) return;
+    window.speechSynthesis.cancel();
+    const utter = new SpeechSynthesisUtterance(text);
+    utter.rate = 1.0;
+    utter.pitch = 0.95;
+    window.speechSynthesis.speak(utter);
+  }
+
+  function startJarvisVoice() {
+    const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRec) {
+      statusEl.textContent = "JARVIS: Voice unsupported in this browser";
+      return;
+    }
+
+    const recognition = new SpeechRec();
+    recognition.lang = "en-US";
+    recognition.continuous = true;
+    recognition.interimResults = false;
+
+    recognition.onresult = (event) => {
+      const transcript = event.results[event.results.length - 1][0].transcript.toLowerCase().trim();
+      statusEl.textContent = `Heard: "${transcript}"`;
+
+      if (transcript.includes("jarvis")) {
+        if (transcript.includes("hello") || transcript.includes("status")) {
+          speak("All systems online. Holographic interface ready.");
+        } else if (transcript.includes("bigger") || transcript.includes("zoom in")) {
+          targetScale = Math.min(2.2, targetScale + 0.4);
+          speak("Increasing hologram scale.");
+        } else if (transcript.includes("smaller") || transcript.includes("zoom out")) {
+          targetScale = Math.max(0.4, targetScale - 0.4);
+          speak("Reducing hologram scale.");
+        } else if (transcript.includes("stop")) {
+          autoSpin = false;
+          speak("Rotation paused.");
+        } else if (transcript.includes("spin")) {
+          autoSpin = true;
+          speak("Resuming rotation.");
+        } else if (transcript.includes("hide")) {
+          overlayEl.style.display = "none";
+          speak("Hologram hidden.");
+        } else if (transcript.includes("show")) {
+          overlayEl.style.display = "block";
+          speak("Hologram restored.");
+        } else if (transcript.includes("reset")) {
+          holoGroup.position.set(0, 0, 0);
+          targetScale = 1;
+          autoSpin = true;
+          speak("Interface reset.");
+        } else {
+          speak("Yes, I am listening.");
+        }
+      }
+    };
+
+    recognition.onend = () => {
+      try { recognition.start(); } catch (e) {}
+    };
+
+    recognition.start();
+    statusEl.textContent = "JARVIS: Listening...";
+    speak("JARVIS online. Hand tracking and voice systems active.");
+  }
+
+  // 4. Single Click to Start Everything (required by browser security)
+  btnEl.addEventListener("click", () => {
+    btnEl.style.display = "none";
+    startHandTracking();
+    startJarvisVoice();
+  });
+})();
+</script>
+</body>
+</html>
