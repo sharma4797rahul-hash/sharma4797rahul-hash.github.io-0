@@ -2,1075 +2,627 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>HOLO AI - Interactive Hologram</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JARVIS | Holographic Interface</title>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
 
 <style>
-*{box-sizing:border-box;margin:0;padding:0}
+*{box-sizing:border-box}
 body{
-  background:#020610;color:#b9faff;
-  font-family:Arial,sans-serif;
-  height:100dvh;overflow:hidden
+ margin:0;overflow:hidden;background:#020812;color:#b9f5ff;
+ font-family:Arial,sans-serif;
 }
-#camera{
-  position:fixed;inset:0;width:100%;height:100%;
-  object-fit:contain;transform:scaleX(-1);
+#video{
+ position:fixed;inset:0;width:100%;height:100%;
+ object-fit:contain;transform:scaleX(-1);background:#020812;
 }
-#three{
-  position:fixed;inset:0;pointer-events:none;
+#handCanvas,#threeCanvas{
+ position:fixed;inset:0;width:100%;height:100%;
+ pointer-events:none;
 }
-#three canvas{display:block;width:100%;height:100%}
-
-:root{--cyan:#00eaff;--panel:#061525eF}
-
-#panel{
-  position:fixed;z-index:5;top:12px;left:12px;
-  width:210px;max-height:calc(100dvh - 24px);
-  overflow:auto;padding:15px;
-  background:var(--panel);
-  border:1px solid #00eaff66;
-  border-radius:15px;
-  box-shadow:0 0 25px #00eaff19;
-  backdrop-filter:blur(14px);
+#handCanvas{z-index:3}
+#threeCanvas{z-index:2}
+body:after{
+ content:"";position:fixed;inset:0;z-index:4;pointer-events:none;
+ background:repeating-linear-gradient(
+ transparent 0px,transparent 3px,
+ rgba(0,220,255,.035) 4px
+ );
 }
-.logo{
-  font-size:19px;font-weight:900;letter-spacing:3px;
-  color:var(--cyan);margin-bottom:4px
+.hud{
+ position:fixed;z-index:8;top:15px;left:15px;
+ font-size:12px;letter-spacing:3px;color:#52eaff;
+ text-shadow:0 0 12px #00d9ff;
 }
-.sub{font-size:9px;color:#8ab9c9;margin-bottom:16px}
+.status{
+ position:fixed;z-index:8;top:42px;left:15px;
+ font-size:10px;color:#8bcbd6;letter-spacing:2px;
+}
+.panel{
+ position:fixed;z-index:10;top:85px;left:15px;
+ width:245px;max-height:75vh;overflow:auto;
+ padding:16px;background:rgba(2,18,32,.88);
+ border:1px solid rgba(0,225,255,.65);
+ box-shadow:0 0 22px rgba(0,190,255,.22),inset 0 0 20px #063044;
+ backdrop-filter:blur(12px);
+ transition:.25s;
+}
+.panel.hidden{transform:translateX(-120%);opacity:0;pointer-events:none}
+.panel h3{
+ margin:0 0 13px;color:#65edff;font-size:13px;
+ letter-spacing:3px;
+}
 .section{
-  font-size:10px;letter-spacing:2px;
-  color:#6eafc0;margin:14px 0 8px
+ margin:16px 0 8px;font-size:10px;color:#58cbdc;
+ letter-spacing:2px;
 }
-.btn{
-  width:100%;padding:11px 8px;margin-bottom:7px;
-  background:#09263a;color:#a9faff;
-  border:1px solid #00eaff55;border-radius:8px;
-  font-size:11px;font-weight:bold;
-  cursor:pointer;transition:.2s;
+button,.upload{
+ display:block;width:100%;margin:7px 0;padding:11px 9px;
+ background:rgba(0,180,220,.09);color:#b9f7ff;
+ border:1px solid rgba(0,220,255,.5);
+ font-size:11px;letter-spacing:1px;cursor:pointer;
+ transition:.2s;
 }
-.btn:active{transform:scale(.96);background:#00bcd4;color:#001}
-.btn.primary{background:#00cfe9;color:#00131b}
-.btn.danger{border-color:#ff547755;color:#ff8c9c}
-#imageInput{display:none}
-#status{
-  font-size:10px;padding:9px;
-  border-radius:7px;background:#00101d;
-  border:1px solid #00eaff33;
-  line-height:1.6;margin-top:10px
+button:active,.upload:active{background:#087f9b;transform:scale(.97)}
+button:hover,.upload:hover{background:rgba(0,220,255,.22);box-shadow:0 0 12px #00bce8}
+.close{
+ position:absolute;right:9px;top:8px;width:30px;height:28px;
+ margin:0;padding:0;font-size:18px;
 }
-#selectedInfo{
-  font-size:10px;color:#9edce8;
-  margin-top:8px;line-height:1.5
+#openMenu{
+ display:none;position:fixed;z-index:12;left:15px;top:85px;
+ width:48px;height:45px;font-size:22px;
+ background:rgba(0,20,35,.9);
 }
-#help{
-  position:fixed;z-index:3;bottom:12px;right:15px;
-  background:#031522dd;border:1px solid #00eaff44;
-  padding:12px;border-radius:10px;
-  font-size:10px;line-height:1.8;
-  max-width:230px;pointer-events:none
+#openMenu.show{display:block}
+#cameraButton{border-color:#00ffc3;color:#8affdf}
+#clearButton{border-color:#ff637f;color:#ff9aaa}
+input[type=file]{display:none}
+.bottom{
+ position:fixed;z-index:8;bottom:15px;left:0;width:100%;
+ text-align:center;font-size:10px;letter-spacing:2px;
+ color:#57cfe4;text-shadow:0 0 10px #00cfff;
+ pointer-events:none;
 }
-#start{
-  position:fixed;inset:0;z-index:20;
-  background:#020610f5;display:flex;
-  align-items:center;justify-content:center;
+#message{
+ position:fixed;z-index:15;bottom:45px;left:50%;
+ transform:translateX(-50%);
+ color:#aaf8ff;font-size:12px;text-align:center;
+ background:rgba(0,20,35,.8);padding:9px 14px;
+ border:1px solid #168ca8;max-width:90%;
 }
-.startCard{
-  background:#071a2b;border:1px solid #00eaff66;
-  border-radius:20px;padding:30px 22px;
-  width:88%;max-width:370px;text-align:center;
-  box-shadow:0 0 40px #00eaff20
+.handInfo{
+ position:fixed;right:15px;top:18px;z-index:8;
+ font-size:10px;letter-spacing:2px;text-align:right;
+ color:#65eaff;line-height:2;
 }
-.startCard h1{color:var(--cyan);margin-bottom:12px}
-.startCard p{font-size:12px;color:#a6cbd7;line-height:1.8;margin-bottom:20px}
-#startButton{
-  border:0;border-radius:9px;padding:14px 25px;
-  background:var(--cyan);font-weight:bold
-}
-#error{color:#ff8999;font-size:11px;margin-top:12px}
 @media(max-width:600px){
-  #panel{
-    width:155px;top:8px;left:8px;
-    padding:10px;max-height:calc(100dvh - 16px)
-  }
-  .logo{font-size:15px}
-  .btn{padding:9px 5px;font-size:10px}
-  .section{margin:10px 0 6px}
-  #help{bottom:8px;right:8px;font-size:9px;max-width:170px}
+ .panel{width:215px;top:75px;max-height:76vh}
+ .hud{font-size:10px}
+ .bottom{font-size:8px}
 }
 </style>
 </head>
 
 <body>
 
-<video id="camera" autoplay muted playsinline></video>
-<div id="three"></div>
+<video id="video" autoplay muted playsinline></video>
+<canvas id="handCanvas"></canvas>
+<div id="threeCanvas"></div>
 
-<div id="panel">
-  <div class="logo">HOLO AI</div>
-  <div class="sub">MULTI-FINGER HOLOGRAPHIC LAB</div>
+<div class="hud">J.A.R.V.I.S // HOLOGRAPHIC SYSTEM</div>
+<div class="status" id="status">SYSTEM STANDBY</div>
 
-  <div class="section">CREATE OBJECT</div>
-  <button class="btn" onclick="addObject('sphere')">＋ SPHERE</button>
-  <button class="btn" onclick="addObject('cube')">＋ CUBE</button>
-  <button class="btn" onclick="addObject('square')">＋ SQUARE</button>
-  <button class="btn" onclick="addObject('torus')">＋ ENERGY RING</button>
-
-  <div class="section">IMAGE HOLOGRAM</div>
-  <button class="btn primary" onclick="document.getElementById('imageInput').click()">
-    ＋ UPLOAD IMAGE
-  </button>
-  <input id="imageInput" type="file" accept="image/*">
-
-  <div class="section">OBJECT CONTROL</div>
-  <button class="btn" onclick="duplicateObject()">DUPLICATE</button>
-  <button class="btn danger" onclick="removeObject()">DELETE SELECTED</button>
-  <button class="btn" onclick="deselect()">DESELECT</button>
-  <button class="btn" onclick="clearObjects()">CLEAR ALL</button>
-
-  <div class="section">SYSTEM</div>
-  <div id="status">CAMERA: WAITING</div>
-  <div id="selectedInfo">Selected: None</div>
+<div class="handInfo" id="handInfo">
+LEFT HAND: NOT DETECTED<br>
+RIGHT HAND: NOT DETECTED
 </div>
 
-<div id="help">
-  <b>HAND CONTROLS</b><br>
-  ☝ Index finger: Touch / move<br>
-  🤏 Thumb + index: Resize<br>
-  ✌ Index + middle: Rotate<br>
-  🖐 All fingertips: Push objects<br>
-  ✋ Open palm: Release
+<button id="openMenu" class="show">☰</button>
+
+<div class="panel" id="panel">
+<button class="close" id="closeMenu">×</button>
+<h3>JARVIS CONTROL</h3>
+
+<button id="cameraButton">◉ ACTIVATE CAMERA</button>
+
+<div class="section">CREATE HOLOGRAM</div>
+<button data-shape="sphere">＋ SPHERE</button>
+<button data-shape="cube">＋ CUBE</button>
+<button data-shape="square">＋ SQUARE</button>
+<button data-shape="torus">＋ TORUS</button>
+
+<div class="section">IMAGE HOLOGRAM</div>
+<label class="upload" for="imageUpload">＋ UPLOAD IMAGE</label>
+<input type="file" id="imageUpload" accept="image/*">
+
+<div class="section">OBJECT CONTROL</div>
+<button id="duplicateButton">DUPLICATE SELECTED</button>
+<button id="deleteButton">DELETE SELECTED</button>
+<button id="clearButton">CLEAR ALL OBJECTS</button>
+
+<div class="section">SYSTEM</div>
+<button id="resetButton">RESET CAMERA VIEW</button>
 </div>
 
-<div id="start">
-  <div class="startCard">
-    <h1>HOLO AI SYSTEM</h1>
-    <p>
-      Activate your camera to enter an interactive
-      holographic environment. Control objects with
-      all five fingers and upload your own images.
-    </p>
-    <button id="startButton">ACTIVATE SYSTEM</button>
-    <div id="error"></div>
-  </div>
-</div>
-
-<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+<div class="bottom">JARVIS ONLINE // TWO-HAND TRACKING SYSTEM</div>
+<div id="message">Press ACTIVATE CAMERA to begin</div>
 
 <script>
-// ============================================
-// HOLO AI - CORE ENGINE
-// ============================================
+const video=document.getElementById("video");
+const handCanvas=document.getElementById("handCanvas");
+const ctx=handCanvas.getContext("2d");
+const panel=document.getElementById("panel");
+const message=document.getElementById("message");
+const statusText=document.getElementById("status");
+const handInfo=document.getElementById("handInfo");
 
-const video=document.getElementById("camera");
-const statusBox=document.getElementById("status");
-const selectedInfo=document.getElementById("selectedInfo");
-
-let scene,camera,renderer;
-let objects=[];
+let cameraStream=null;
+let handsModel=null;
+let cameraRunning=false;
+let busy=false;
 let selected=null;
-let hands;
-let stream=null;
-
-let handVisible=false;
-let grabbing=false;
-let pinch=false;
-let rotating=false;
-
-let target={x:0,y:0};
-let smoothed={x:0,y:0};
-
-let grabOffset={x:0,y:0};
-let initialPinch=0;
-let initialScale=1;
-let lastAngle=0;
-
-let lastHandTime=0;
-let lastFrame=0;
-let frameCounter=0;
-let fps=0;
-
-const MAX_OBJECTS=60;
-const clock=new THREE.Clock();
-
-// MediaPipe landmark connections
-const connections=[
- [0,1],[1,2],[2,3],[3,4],
- [0,5],[5,6],[6,7],[7,8],
- [5,9],[9,10],[10,11],[11,12],
- [9,13],[13,14],[14,15],[15,16],
- [13,17],[17,18],[18,19],[19,20],
- [0,17]
-];
-
-const fingerTips=[4,8,12,16,20];
-
-// ============================================
-// THREE.JS INITIALIZATION
-// ============================================
-
-function initThree(){
-
- scene=new THREE.Scene();
-
- camera=new THREE.OrthographicCamera(
-   -5,5,5,-5,0.1,100
- );
-
- camera.position.z=15;
-
- renderer=new THREE.WebGLRenderer({
-   alpha:true,
-   antialias:true,
-   powerPreference:"high-performance"
- });
-
- renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));
- renderer.setSize(innerWidth,innerHeight);
- renderer.setClearColor(0x000000,0);
-
- document.getElementById("three").appendChild(renderer.domElement);
-
- updateCameraSize();
-
- createHandVisuals();
-
- animate();
-}
-
-function updateCameraSize(){
-
- if(!camera||!renderer)return;
-
- const aspect=innerWidth/innerHeight;
-
- camera.left=-5*aspect;
- camera.right=5*aspect;
- camera.top=5;
- camera.bottom=-5;
-
- camera.updateProjectionMatrix();
-
- renderer.setSize(innerWidth,innerHeight);
-}
-
-// ============================================
-// HOLOGRAM OBJECT GENERATOR
-// ============================================
-
-function createMaterial(color,opacity=0.9){
-
- return new THREE.LineBasicMaterial({
-   color,
-   transparent:true,
-   opacity,
-   depthWrite:false
- });
-}
-
-function makeWire(geometry,color){
-
- const edge=new THREE.EdgesGeometry(geometry);
-
- return new THREE.LineSegments(
-   edge,
-   createMaterial(color)
- );
-}
-
-function makeObject(type){
-
- const group=new THREE.Group();
-
- let geometry;
- let color=0x00eaff;
-
- if(type==="sphere"){
-   geometry=new THREE.IcosahedronGeometry(0.85,2);
-   color=0x00eaff;
- }
- else if(type==="cube"){
-   geometry=new THREE.BoxGeometry(1.5,1.5,1.5);
-   color=0x00ffad;
- }
- else if(type==="square"){
-   geometry=new THREE.PlaneGeometry(1.8,1.8);
-   color=0xb56cff;
- }
- else if(type==="torus"){
-   geometry=new THREE.TorusGeometry(0.9,0.3,12,32);
-   color=0xffa43b;
- }
-
- const main=makeWire(geometry,color);
- const glow=makeWire(geometry,color);
-
- glow.material.opacity=.2;
- glow.scale.setScalar(1.04);
-
- group.add(glow,main);
-
- // Center light
- const center=new THREE.Mesh(
-   new THREE.SphereGeometry(.045,12,12),
-   new THREE.MeshBasicMaterial({color:0xffffff})
- );
-
- group.add(center);
-
- // Outer ring
- const ring=new THREE.Mesh(
-   new THREE.TorusGeometry(1.2,.009,6,80),
-   new THREE.MeshBasicMaterial({
-     color,transparent:true,opacity:.65
-   })
- );
-
- group.add(ring);
-
- group.userData={
-   type,
-   main,
-   glow,
-   ring,
-   radius:1.2,
-   color,
-   image:false
- };
-
- return group;
-}
-
-// ============================================
-// ADD OBJECTS ONLY WHEN REQUESTED
-// ============================================
-
-function addObject(type){
-
- if(!scene)return;
-
- if(objects.length>=MAX_OBJECTS){
-   alert("Object limit reached");
-   return;
- }
-
- const obj=makeObject(type);
-
- const n=objects.length;
-
- obj.position.set(
-   (Math.random()-.5)*2,
-   (Math.random()-.5)*1.5,
-   0
- );
-
- scene.add(obj);
- objects.push(obj);
- selectObject(obj);
- updateObjectInfo();
-}
-
-function selectObject(obj){
-
- if(selected){
-   selected.userData.glow.material.opacity=.2;
- }
-
- selected=obj;
-
- if(selected){
-   selected.userData.glow.material.opacity=.85;
- }
-
- updateObjectInfo();
-}
-
-function deselect(){
- selectObject(null);
- grabbing=false;
- pinch=false;
-}
-
-function updateObjectInfo(){
-
- selectedInfo.textContent=selected
- ? "Selected: "+selected.userData.type
- : "Selected: None";
-}
-
-function removeObject(){
-
- if(!selected)return;
-
- scene.remove(selected);
-
- // Release image texture resources too
- selected.traverse(child=>{
-   if(child.geometry)child.geometry.dispose();
-   if(child.material){
-     if(child.material.map)child.material.map.dispose();
-     child.material.dispose();
-   }
- });
-
- objects=objects.filter(o=>o!==selected);
-
- selectObject(null);
-}
-
-function duplicateObject(){
-
- if(!selected)return;
-
- const copy=selected.clone(true);
-
- copy.position.x+=.7;
- copy.position.y-=.5;
-
- scene.add(copy);
- objects.push(copy);
- selectObject(copy);
-}
-
-function clearObjects(){
-
- objects.forEach(o=>scene.remove(o));
-
- objects=[];
- selectObject(null);
-}
-
-// ============================================
-// IMAGE TO HOLOGRAM DISPLAY
-// ============================================
-
-document.getElementById("imageInput")
-.addEventListener("change",function(event){
-
- const file=event.target.files[0];
-
- if(!file)return;
-
- if(!file.type.startsWith("image/")){
-   alert("Please choose an image");
-   return;
- }
-
- if(objects.length>=MAX_OBJECTS){
-   alert("Object limit reached");
-   return;
- }
-
- const reader=new FileReader();
-
- reader.onload=function(e){
-
-   const image=new Image();
-
-   image.onload=function(){
-
-     const texture=new THREE.Texture(image);
-     texture.colorSpace=THREE.SRGBColorSpace;
-     texture.needsUpdate=true;
-
-     const aspect=image.width/image.height;
-
-     const width=Math.min(2.4,2*aspect);
-     const height=width/aspect;
-
-     const group=new THREE.Group();
-
-     // Image display
-     const geometry=new THREE.PlaneGeometry(width,height);
-
-     const material=new THREE.MeshBasicMaterial({
-       map:texture,
-       transparent:true,
-       opacity:.83,
-       side:THREE.DoubleSide,
-       depthWrite:false
-     });
-
-     const display=new THREE.Mesh(geometry,material);
-
-     group.add(display);
-
-     // Holographic frame
-     const borderGeometry=new THREE.EdgesGeometry(geometry);
-
-     const border=new THREE.LineSegments(
-       borderGeometry,
-       new THREE.LineBasicMaterial({
-         color:0x00eaff,
-         transparent:true,
-         opacity:1
-       })
-     );
-
-     border.position.z=.03;
-     group.add(border);
-
-     // Decorative scanning grid
-     const grid=new THREE.GridHelper(
-       Math.max(width,height)*1.1,
-       18,
-       0x00eaff,
-       0x0077aa
-     );
-
-     grid.rotation.x=Math.PI/2;
-     grid.position.z=.02;
-     grid.material.transparent=true;
-     grid.material.opacity=.16;
-     group.add(grid);
-
-     group.userData={
-       type:"image hologram",
-       main:border,
-       glow:border,
-       ring:grid,
-       radius:1.5,
-       image:true
-     };
-
-     group.position.set(0,0,0);
-
-     scene.add(group);
-     objects.push(group);
-     selectObject(group);
-
-   };
-
-   image.src=e.target.result;
- };
-
- reader.readAsDataURL(file);
- event.target.value="";
+let objects=[];
+let handPoints=[];
+let previousPinch=false;
+let activeHand=-1;
+let scaleStart=null;
+let baseScale=1;
+
+const colors=[0x00eaff,0x00ffc3,0x39aaff,0x9b72ff];
+
+const scene=new THREE.Scene();
+const camera=new THREE.OrthographicCamera(-5,5,5,-5,.1,100);
+camera.position.set(0,0,20);
+
+const renderer=new THREE.WebGLRenderer({
+ alpha:true,antialias:true
 });
+renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));
+renderer.setSize(innerWidth,innerHeight);
+renderer.setClearColor(0x000000,0);
+document.getElementById("threeCanvas").appendChild(renderer.domElement);
+renderer.domElement.style.width="100%";
+renderer.domElement.style.height="100%";
 
-// ============================================
-// CAMERA COORDINATE MAPPING
-// ============================================
+scene.add(new THREE.AmbientLight(0xffffff,1));
 
-function handToScreen(x,y){
+function resize(){
+ const w=innerWidth;
+ const h=innerHeight;
+ camera.left=-w/200;
+ camera.right=w/200;
+ camera.top=h/200;
+ camera.bottom=-h/200;
+ camera.updateProjectionMatrix();
+ renderer.setSize(w,h);
+ handCanvas.width=Math.round(w*devicePixelRatio);
+ handCanvas.height=Math.round(h*devicePixelRatio);
+ handCanvas.style.width=w+"px";
+ handCanvas.style.height=h+"px";
+ ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+}
+addEventListener("resize",resize);
+resize();
 
- const videoRatio=video.videoWidth/video.videoHeight;
- const screenRatio=innerWidth/innerHeight;
-
- let dx=1-x;
- let dy=y;
-
- if(videoRatio>screenRatio){
-
-   const h=screenRatio/videoRatio;
-   dy=(dy-(1-h)/2)/h;
-
- }else{
-
-   const w=videoRatio/screenRatio;
-   dx=(dx-(1-w)/2)/w;
- }
-
+function getVideoRect(){
+ const vw=video.videoWidth||640;
+ const vh=video.videoHeight||480;
+ const scale=Math.min(innerWidth/vw,innerHeight/vh);
+ const width=vw*scale;
+ const height=vh*scale;
  return {
-   x:THREE.MathUtils.clamp(dx,0,1),
-   y:THREE.MathUtils.clamp(dy,0,1)
+  x:(innerWidth-width)/2,
+  y:(innerHeight-height)/2,
+  width,height
  };
 }
 
 function screenToWorld(x,y){
+ return new THREE.Vector3(
+  (x-innerWidth/2)/100,
+  (innerHeight/2-y)/100,
+  0
+ );
+}
 
- const aspect=innerWidth/innerHeight;
-
+function handToScreen(point){
+ const r=getVideoRect();
  return {
-   x:(x-.5)*10*aspect,
-   y:(.5-y)*10
+  x:r.x+(1-point.x)*r.width,
+  y:r.y+point.y*r.height
  };
 }
 
-// ============================================
-// FULL HAND VISUALIZATION
-// ============================================
-
-let handPoints=[];
-let handLines;
-
-function createHandVisuals(){
-
- const pointGeometry=new THREE.SphereGeometry(.055,8,8);
-
- for(let i=0;i<21;i++){
-
-   const material=new THREE.MeshBasicMaterial({
-     color: fingerTips.includes(i)?0xffffff:0x00eaff
-   });
-
-   const point=new THREE.Mesh(pointGeometry,material);
-
-   scene.add(point);
-   handPoints.push(point);
- }
-
- const positions=new Float32Array(connections.length*6);
-
- const geometry=new THREE.BufferGeometry();
-
- geometry.setAttribute(
-   "position",
-   new THREE.BufferAttribute(positions,3)
- );
-
- handLines=new THREE.LineSegments(
-   geometry,
-   new THREE.LineBasicMaterial({
-     color:0x00eaff,
-     transparent:true,
-     opacity:.75
-   })
- );
-
- scene.add(handLines);
+function showMessage(text){
+ message.textContent=text;
 }
 
-function updateHandVisuals(lm){
-
- const coords=[];
-
- for(let i=0;i<21;i++){
-
-   const p=handToScreen(lm[i].x,lm[i].y);
-   const w=screenToWorld(p.x,p.y);
-
-   coords.push({
-     x:w.x,
-     y:w.y,
-     z:Math.max(-.8,Math.min(.8,-lm[i].z*3))
-   });
-
-   handPoints[i].position.set(
-     w.x,w.y,coords[i].z
-   );
-
-   handPoints[i].visible=true;
- }
-
- const position=handLines.geometry.attributes.position;
-
- let k=0;
-
- connections.forEach(([a,b])=>{
-
-   position.array[k++]=coords[a].x;
-   position.array[k++]=coords[a].y;
-   position.array[k++]=coords[a].z;
-
-   position.array[k++]=coords[b].x;
-   position.array[k++]=coords[b].y;
-   position.array[k++]=coords[b].z;
-
+function createMaterial(color){
+ return new THREE.MeshBasicMaterial({
+  color:color,
+  wireframe:true,
+  transparent:true,
+  opacity:.85
  });
-
- position.needsUpdate=true;
 }
 
-function hideHand(){
+function addHologram(type){
+ let geometry;
+ const color=colors[objects.length%colors.length];
 
- handPoints.forEach(p=>p.visible=false);
-
- if(handLines)handLines.visible=false;
-}
-
-// ============================================
-// FINGER GESTURES
-// ============================================
-
-function distance(a,b){
-
- return Math.hypot(a.x-b.x,a.y-b.y);
-}
-
-function isFingerExtended(lm,tip,pip){
-
- // Image coordinates increase downward
- return lm[tip].y < lm[pip].y-.015;
-}
-
-function getAngle(lm){
-
- return Math.atan2(
-   lm[12].y-lm[8].y,
-   lm[12].x-lm[8].x
- );
-}
-
-// Find object closest to the index fingertip
-
-function findObjectAt(x,y){
-
- let nearest=null;
- let min=Infinity;
-
- for(const obj of objects){
-
-   const d=Math.hypot(
-     obj.position.x-x,
-     obj.position.y-y
-   );
-
-   const limit=obj.userData.radius*
-     Math.max(obj.scale.x,obj.scale.y)+.55;
-
-   if(d<limit&&d<min){
-     min=d;
-     nearest=obj;
-   }
+ if(type==="sphere"){
+  geometry=new THREE.IcosahedronGeometry(.65,2);
+ }else if(type==="cube"){
+  geometry=new THREE.BoxGeometry(1.1,1.1,1.1);
+ }else if(type==="square"){
+  geometry=new THREE.PlaneGeometry(1.3,1.3);
+ }else if(type==="torus"){
+  geometry=new THREE.TorusGeometry(.65,.2,12,48);
  }
 
+ const material=createMaterial(color);
+ const mesh=new THREE.Mesh(geometry,material);
+ mesh.position.set(
+  (Math.random()-.5)*3,
+  (Math.random()-.5)*2,
+  0
+ );
+
+ mesh.userData={
+  type:type,
+  baseColor:color
+ };
+
+ scene.add(mesh);
+ objects.push(mesh);
+ selectObject(mesh);
+ showMessage(type.toUpperCase()+" HOLOGRAM CREATED");
+}
+
+function selectObject(obj){
+ if(selected){
+  selected.material.opacity=.85;
+ }
+ selected=obj;
+ if(selected){
+  selected.material.opacity=1;
+ }
+}
+
+function duplicateSelected(){
+ if(!selected)return showMessage("SELECT AN OBJECT FIRST");
+ const clone=selected.clone();
+ clone.position.x+=.5;
+ clone.position.y-=.4;
+ scene.add(clone);
+ objects.push(clone);
+ selectObject(clone);
+}
+
+function deleteSelected(){
+ if(!selected)return;
+ scene.remove(selected);
+ selected.geometry.dispose();
+ selected.material.dispose();
+ objects=objects.filter(o=>o!==selected);
+ selected=null;
+ showMessage("OBJECT DELETED");
+}
+
+function clearObjects(){
+ objects.forEach(o=>{
+  scene.remove(o);
+  o.geometry.dispose();
+  if(o.material.map)o.material.map.dispose();
+  o.material.dispose();
+ });
+ objects=[];
+ selected=null;
+ showMessage("ALL HOLOGRAMS CLEARED");
+}
+
+function nearestObject(point){
+ let nearest=null;
+ let best=1.25;
+ for(const obj of objects){
+  const dx=obj.position.x-point.x;
+  const dy=obj.position.y-point.y;
+  const distance=Math.sqrt(dx*dx+dy*dy);
+  if(distance<best){
+   best=distance;
+   nearest=obj;
+  }
+ }
  return nearest;
 }
 
-// ============================================
-// ALL-FINGER INTERACTION
-// ============================================
+function makeImageHologram(file){
+ const url=URL.createObjectURL(file);
+ const img=new Image();
 
-function pushObjects(lm){
+ img.onload=()=>{
+  const texture=new THREE.Texture(img);
+  texture.needsUpdate=true;
 
- // All five fingertips can push nearby objects.
- // The index finger is reserved for precise dragging.
+  const aspect=img.width/img.height;
+  const width= Math.min(3,2*aspect);
+  const height=width/aspect;
 
- for(const tip of [4,12,16,20]){
+  const material=new THREE.MeshBasicMaterial({
+   map:texture,
+   transparent:true,
+   opacity:.78,
+   side:THREE.DoubleSide
+  });
 
-   const p=handToScreen(lm[tip].x,lm[tip].y);
-   const w=screenToWorld(p.x,p.y);
+  const mesh=new THREE.Mesh(
+   new THREE.PlaneGeometry(width,height),material
+  );
 
-   for(const obj of objects){
+  mesh.position.set(0,0,0);
+  scene.add(mesh);
+  objects.push(mesh);
+  selectObject(mesh);
 
-     if(obj===selected&&grabbing)continue;
+  const border=new THREE.LineSegments(
+   new THREE.EdgesGeometry(mesh.geometry),
+   new THREE.LineBasicMaterial({
+    color:0x00eaff,transparent:true,opacity:.9
+   })
+  );
+  mesh.add(border);
 
-     const dx=obj.position.x-w.x;
-     const dy=obj.position.y-w.y;
-
-     const d=Math.hypot(dx,dy);
-
-     if(d<.65&&d>.01){
-
-       const force=(.65-d)*.035;
-
-       obj.position.x+=dx/d*force;
-       obj.position.y+=dy/d*force;
-     }
-   }
- }
-}
-
-// ============================================
-// HAND RESULTS
-// ============================================
-
-function onResults(results){
-
- const lm=results.multiHandLandmarks?.[0];
-
- if(!lm){
-
-   handVisible=false;
-   grabbing=false;
-   pinch=false;
-   rotating=false;
-   hideHand();
-
-   statusBox.textContent="HAND: NOT DETECTED";
-   return;
- }
-
- handVisible=true;
- lastHandTime=performance.now();
-
- handLines.visible=true;
-
- updateHandVisuals(lm);
-
- // Palm center
- const palm={
-   x:(lm[0].x+lm[5].x+lm[9].x+lm[13].x+lm[17].x)/5,
-   y:(lm[0].y+lm[5].y+lm[9].y+lm[13].y+lm[17].y)/5
+  showMessage("IMAGE HOLOGRAM CREATED");
+  URL.revokeObjectURL(url);
  };
-
- const p=handToScreen(palm.x,palm.y);
- const world=screenToWorld(p.x,p.y);
-
- // Index fingertip pointer
- const ip=handToScreen(lm[8].x,lm[8].y);
- const iw=screenToWorld(ip.x,ip.y);
-
- // Pinch detection
- const pinchDistance=distance(lm[4],lm[8]);
-
- const wasPinching=pinch;
-
- if(!pinch&&pinchDistance<.055)pinch=true;
- if(pinch&&pinchDistance>.085)pinch=false;
-
- const indexExtended=isFingerExtended(lm,8,6);
- const middleExtended=isFingerExtended(lm,12,10);
-
- // Rotation gesture
- const twoFinger= indexExtended&&middleExtended&&!pinch;
-
- // Begin index interaction
- if(indexExtended&&!wasPinching&&!grabbing&&!twoFinger){
-
-   const hit=findObjectAt(iw.x,iw.y);
-
-   if(hit){
-
-     selectObject(hit);
-     grabbing=true;
-
-     grabOffset.x=hit.position.x-iw.x;
-     grabOffset.y=hit.position.y-iw.y;
-
-   }
- }
-
- // Pinch can also grab the object nearest the index finger
- if(pinch&&!grabbing){
-
-   const hit=findObjectAt(iw.x,iw.y);
-
-   if(hit){
-
-     selectObject(hit);
-     grabbing=true;
-
-     grabOffset.x=hit.position.x-iw.x;
-     grabOffset.y=hit.position.y-iw.y;
-
-     initialScale=hit.scale.x;
-     initialPinch=pinchDistance;
-   }
- }
-
- // Release when neither index dragging nor pinching
- if(grabbing&&!indexExtended&&!pinch){
-
-   grabbing=false;
-   rotating=false;
- }
-
- // Drag with index fingertip or pinched hand
- if(grabbing&&selected){
-
-   selected.position.x=iw.x+grabOffset.x;
-   selected.position.y=iw.y+grabOffset.y;
- }
-
- // Resize with pinch distance
- if(pinch&&selected&&grabbing){
-
-   const ratio=pinchDistance/Math.max(initialPinch,.001);
-
-   const scale=THREE.MathUtils.clamp(
-     initialScale*ratio,.2,4
-   );
-
-   selected.scale.setScalar(scale);
- }
-
- // Rotate with index + middle finger
- if(twoFinger&&selected){
-
-   const angle=getAngle(lm);
-
-   if(!rotating){
-     lastAngle=angle;
-     rotating=true;
-   }else{
-
-     let delta=angle-lastAngle;
-
-     if(delta>Math.PI)delta-=Math.PI*2;
-     if(delta<-Math.PI)delta+=Math.PI*2;
-
-     selected.rotation.z+=delta;
-     lastAngle=angle;
-   }
-
- }else{
-   rotating=false;
- }
-
- // All other fingertips interact with objects
- pushObjects(lm);
-
- statusBox.textContent=
-   grabbing?"OBJECT: GRABBED":
-   pinch?"GESTURE: PINCH":
-   twoFinger?"GESTURE: ROTATE":
-   "HAND: TRACKING";
+ img.src=url;
 }
 
-// ============================================
-// SMOOTH ANIMATION ENGINE
-// ============================================
+document.querySelectorAll("[data-shape]").forEach(button=>{
+ button.addEventListener("click",()=>{
+  addHologram(button.dataset.shape);
+ });
+});
 
-function animate(){
+document.getElementById("duplicateButton").onclick=duplicateSelected;
+document.getElementById("deleteButton").onclick=deleteSelected;
+document.getElementById("clearButton").onclick=clearObjects;
 
- requestAnimationFrame(animate);
+document.getElementById("imageUpload").addEventListener("change",e=>{
+ const file=e.target.files[0];
+ if(file)makeImageHologram(file);
+ e.target.value="";
+});
 
- if(!renderer||!scene)return;
+document.getElementById("closeMenu").onclick=()=>{
+ panel.classList.add("hidden");
+ document.getElementById("openMenu").classList.add("show");
+};
+document.getElementById("openMenu").onclick=()=>{
+ panel.classList.remove("hidden");
+ document.getElementById("openMenu").classList.remove("show");
+};
 
- const dt=Math.min(clock.getDelta(),.05);
- const elapsed=clock.elapsedTime;
+document.getElementById("resetButton").onclick=()=>{
+ objects.forEach(o=>o.rotation.set(0,0,0));
+ showMessage("HOLOGRAM VIEW RESET");
+};
 
- // Frame-rate independent damping
- const smooth=1-Math.exp(-14*dt);
+function drawHands(results){
+ ctx.clearRect(0,0,innerWidth,innerHeight);
+ handPoints=[];
 
- objects.forEach((obj,i)=>{
+ const all=results.multiHandLandmarks||[];
+ const labels=results.multiHandedness||[];
 
-   const data=obj.userData;
+ let left=false,right=false;
 
-   if(obj!==selected){
+ all.forEach((landmarks,index)=>{
+  const label=labels[index]?.label||"Hand";
+  if(label==="Left")left=true;
+  if(label==="Right")right=true;
 
-     if(!data.image){
+  const pts=landmarks.map(handToScreen);
+  handPoints.push({
+   points:landmarks,
+   screen:pts,
+   label
+  });
 
-       obj.rotation.y+=dt*.18;
-       obj.rotation.x+=dt*.09;
+  const color=index===0?"#00f6ff":"#00ffad";
+  ctx.strokeStyle=color;
+  ctx.fillStyle=color;
+  ctx.lineWidth=2;
+  ctx.shadowColor=color;
+  ctx.shadowBlur=10;
 
-     }
+  for(const connection of HAND_CONNECTIONS){
+   const a=pts[connection[0]];
+   const b=pts[connection[1]];
+   ctx.beginPath();
+   ctx.moveTo(a.x,a.y);
+   ctx.lineTo(b.x,b.y);
+   ctx.stroke();
+  }
 
-   }
-
-   if(data.ring){
-
-     data.ring.rotation.z+=dt*.3;
-   }
-
-   // Animated holographic glow
-   if(data.glow&&!data.image&&obj!==selected){
-
-     data.glow.material.opacity=
-       .2+Math.sin(elapsed*2+i)*.08;
-   }
+  pts.forEach((p,i)=>{
+   ctx.beginPath();
+   ctx.arc(p.x,p.y,i===8||i===4?6:3,0,Math.PI*2);
+   ctx.fill();
+  });
  });
 
- // FPS estimate
- frameCounter++;
+ ctx.shadowBlur=0;
 
- if(elapsed-lastFrame>=1){
+ handInfo.innerHTML=
+  "LEFT HAND: "+(left?"TRACKING":"NOT DETECTED")+
+  "<br>RIGHT HAND: "+(right?"TRACKING":"NOT DETECTED");
+}
 
-   fps=frameCounter;
-   frameCounter=0;
-   lastFrame=elapsed;
+function isPinching(landmarks){
+ const thumb=landmarks[4];
+ const index=landmarks[8];
+ const dx=thumb.x-index.x;
+ const dy=thumb.y-index.y;
+ return Math.sqrt(dx*dx+dy*dy)<.055;
+}
 
-   statusBox.dataset.fps=fps;
+function processGestures(results){
+ const all=results.multiHandLandmarks||[];
+ const pinching=[];
+
+ all.forEach((landmarks,index)=>{
+  if(isPinching(landmarks)){
+   const p=handToScreen(landmarks[8]);
+   pinching.push({
+    index,
+    point:screenToWorld(p.x,p.y)
+   });
+  }
+ });
+
+ // Two hands pinching: resize the selected hologram.
+ if(pinching.length===2 && selected){
+  const a=pinching[0].point;
+  const b=pinching[1].point;
+  const distance=a.distanceTo(b);
+
+  if(scaleStart===null){
+   scaleStart=distance;
+   baseScale=selected.scale.x;
+  }else{
+   const factor=distance/Math.max(scaleStart,.01);
+   const newScale=THREE.MathUtils.clamp(baseScale*factor,.25,4);
+   selected.scale.setScalar(newScale);
+  }
+  previousPinch=true;
+  activeHand=-1;
+  return;
  }
+
+ scaleStart=null;
+
+ // One hand pinching: select and drag.
+ if(pinching.length===1){
+  const gesture=pinching[0];
+
+  if(!previousPinch || activeHand!==gesture.index){
+   const found=nearestObject(gesture.point);
+   if(found){
+    selectObject(found);
+    activeHand=gesture.index;
+   }else{
+    activeHand=-1;
+   }
+  }
+
+  if(selected && activeHand===gesture.index){
+   selected.position.x=gesture.point.x;
+   selected.position.y=gesture.point.y;
+  }
+
+  previousPinch=true;
+ }else{
+  previousPinch=false;
+  activeHand=-1;
+ }
+}
+
+function onResults(results){
+ drawHands(results);
+ processGestures(results);
+
+ if(handPoints.length){
+  statusText.textContent="SYSTEM ACTIVE // "+handPoints.length+" HAND(S) TRACKED";
+ }else{
+  statusText.textContent="SYSTEM ACTIVE // WAITING FOR HANDS";
+ }
+}
+
+async function startCamera(){
+ try{
+  showMessage("REQUESTING CAMERA ACCESS...");
+
+  cameraStream=await navigator.mediaDevices.getUserMedia({
+   audio:false,
+   video:{
+    facingMode:"user",
+    width:{ideal:640},
+    height:{ideal:480},
+    frameRate:{ideal:30,max:30}
+   }
+  });
+
+  video.srcObject=cameraStream;
+  await video.play();
+
+  handsModel=new Hands({
+   locateFile:file=>
+    "https://cdn.jsdelivr.net/npm/@mediapipe/hands/"+file
+  });
+
+  handsModel.setOptions({
+   maxNumHands:2,
+   modelComplexity:0,
+   minDetectionConfidence:.65,
+   minTrackingConfidence:.6
+  });
+
+  handsModel.onResults(onResults);
+
+  cameraRunning=true;
+  statusText.textContent="CAMERA ONLINE";
+  showMessage("JARVIS ONLINE // SHOW BOTH HANDS");
+
+  document.getElementById("cameraButton").textContent="● CAMERA ACTIVE";
+  runTracking();
+
+ }catch(error){
+  console.error(error);
+  showMessage("CAMERA ERROR: "+error.message);
+  statusText.textContent="CAMERA ERROR";
+ }
+}
+
+async function runTracking(){
+ if(!cameraRunning)return;
+
+ if(!busy && video.readyState>=2){
+  busy=true;
+  try{
+   await handsModel.send({image:video});
+  }catch(error){
+   console.error("Tracking error:",error);
+  }
+  busy=false;
+ }
+ requestAnimationFrame(runTracking);
+}
+
+document.getElementById("cameraButton").onclick=()=>{
+ if(!cameraRunning)startCamera();
+};
+
+function animate(){
+ requestAnimationFrame(animate);
+
+ const time=performance.now()*.001;
+
+ objects.forEach(obj=>{
+  obj.rotation.x+=.002;
+  obj.rotation.y+=.003;
+
+  if(obj===selected){
+   obj.material.opacity=.8+Math.sin(time*4)*.18;
+  }
+ });
 
  renderer.render(scene,camera);
 }
-
-// ============================================
-// CAMERA START
-// ============================================
-
-async function startSystem(){
-
- const button=document.getElementById("startButton");
- const error=document.getElementById("error");
-
- button.disabled=true;
- button.textContent="STARTING...";
-
- try{
-
-   stream=await navigator.mediaDevices.getUserMedia({
-
-     audio:false,
-
-     video:{
-       facingMode:"user",
-       width:{ideal:640},
-       height:{ideal:480},
-       frameRate:{ideal:30,max:30}
-     }
-   });
-
-   video.srcObject=stream;
-
-   await new Promise(resolve=>{
-     video.onloadedmetadata=resolve;
-   });
-
-   await video.play();
-
-   initThree();
-
-   hands=new Hands({
-
-     locateFile:file=>
-       "https://cdn.jsdelivr.net/npm/@mediapipe/hands/"+file
-
-   });
-
-   hands.setOptions({
-
-     maxNumHands:1,
-     modelComplexity:0,
-     minDetectionConfidence:.65,
-     minTrackingConfidence:.6
-
-   });
-
-   hands.onResults(onResults);
-
-   // Process camera frames separately from rendering
-   let processing=false;
-
-   async function processHands(){
-
-     if(video.readyState>=2&&!processing){
-
-       processing=true;
-
-       try{
-
-         await hands.send({image:video});
-
-       }catch(e){
-
-         console.warn("Tracking error",e);
-
-       }finally{
-
-         processing=false;
-       }
-     }
-
-     if(stream&&stream.active){
-       requestAnimationFrame(processHands);
-     }
-   }
-
-   document.getElementById("start").style.display="none";
-
-   processHands();
-
- }catch(e){
-
-   console.error(e);
-
-   error.textContent=
-     "Unable to start: "+e.message;
-
-   button.disabled=false;
-   button.textContent="TRY AGAIN";
- }
-}
-
-document.getElementById("startButton")
-.addEventListener("click",startSystem);
-
-window.addEventListener("resize",updateCameraSize);
+animate();
 
 </script>
 </body>
